@@ -23,3 +23,9 @@ submissions/
 compile_commands.json
 .gdb_history
 .cache/
+
+# 实验指导书：本地参考文档，不纳入版本库
+实验指导书.docx
+
+# make diff 生成的补丁：单独上传提交，不纳入版本库
+commit.patch
