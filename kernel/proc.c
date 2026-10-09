@@ -291,6 +291,19 @@ void reparent(struct proc *p) {
   }
 }
 
+// Return the lowercase name of a process state, as required by the
+// exit_info output format (e.g. "sleep", "run", "runble").
+static char *procstate_name(enum procstate st) {
+  switch (st) {
+    case UNUSED:   return "unused";
+    case SLEEPING: return "sleep";
+    case RUNNABLE: return "runble";
+    case RUNNING:  return "run";
+    case ZOMBIE:   return "zombie";
+    default:       return "???";
+  }
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
@@ -338,6 +351,21 @@ void exit(int status) {
 
   acquire(&p->lock);
 
+  // Print this process's parent, then each of its children, while the
+  // children are still parented to p (i.e. before reparent() below hands
+  // them over to init).
+  exit_info("proc %d exit, parent pid %d, name %s, state %s\n", p->pid,
+            original_parent->pid, original_parent->name,
+            procstate_name(original_parent->state));
+  int child_num = 0;
+  for (struct proc *pp = proc; pp < &proc[NPROC]; pp++) {
+    if (pp->parent == p) {
+      exit_info("proc %d exit, child %d, pid %d, name %s, state %s\n", p->pid,
+                child_num, pp->pid, pp->name, procstate_name(pp->state));
+      child_num++;
+    }
+  }
+
   // Give any children to init.
   reparent(p);
 
@@ -356,7 +384,9 @@ void exit(int status) {
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
-int wait(uint64 addr) {
+// flags == 0: block until a child exits.
+// flags != 0: non-blocking; return -1 if no zombie child is ready.
+int wait(uint64 addr, int flags) {
   struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
@@ -396,6 +426,12 @@ int wait(uint64 addr) {
 
     // No point waiting if we don't have any children.
     if (!havekids || p->killed) {
+      release(&p->lock);
+      return -1;
+    }
+
+    // Non-blocking wait: no zombie child is ready, so don't sleep.
+    if (flags != 0) {
       release(&p->lock);
       return -1;
     }
